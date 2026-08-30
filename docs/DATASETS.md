@@ -2,53 +2,40 @@
 
 ## MBDD2025
 
-Status: Planned
+Status: Planned / Unverified
 
 ### Source
 
-To be documented.
+Unverified. The official dataset source has not been confirmed.
 
 ### Version
 
-To be confirmed.
+Unverified.
 
 ### License
 
-To be confirmed from the official dataset source.
+Unverified. The dataset license must be confirmed from the official source before use.
 
-### Classes
+### Annotation Format
 
-- crack
-- leakage
-- abscission
-- corrosion
-- bulge
+Unverified.
 
-### Usage
+### Class Taxonomy
 
-Primary dataset for:
+Unverified. No class IDs or class names are treated as canonical during repository bootstrap.
 
-- training
-- validation
-- internal evaluation
-- error analysis
+Dataset registration, taxonomy verification, and configuration completion belong to the MBDD2025 Data Foundation milestone.
 
 ---
 
 ## CUBIT-Det
 
-Status: Planned
+Status: Planned / Unverified
 
 ### Usage
 
-External dataset for cross-dataset generalization evaluation.
+Candidate external dataset for a future cross-dataset generalization evaluation.
 
-### Planned Shared Taxonomy
+### Dataset Metadata and Taxonomy
 
-| MBDD2025 | CUBIT-Det | Shared class |
-|---|---|---|
-| crack | crack | crack |
-| abscission | spalling | surface_damage |
-| leakage | moisture | moisture_damage |
-
-The mapping will be verified before experiments.
+Source, version, license, annotation format, class taxonomy, and any cross-dataset mapping remain unverified. No mapping is canonical during repository bootstrap.

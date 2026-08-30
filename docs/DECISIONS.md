@@ -18,13 +18,15 @@ GitHub `main` is the canonical source of truth for accepted decisions.
 
 Each decision must use one of the following statuses:
 
-* **Proposed** — under discussion, not yet adopted
+* **Proposed** — under discussion, not yet adopted; its assumptions are not verified project facts
 * **Accepted** — currently active
 * **Superseded** — replaced by a newer decision
 * **Rejected** — considered but intentionally not adopted
 * **Deprecated** — still present but should no longer be used
 
 Do not silently modify an Accepted decision.
+
+`docs/ROADMAP.md` records planned work. A roadmap item does not become an Accepted decision solely because it appears there. Dataset, model, inference, serving, and deployment choices that depend on future verification remain Proposed until the relevant Issue records sufficient evidence and approval.
 
 If an Accepted decision must change:
 
@@ -151,14 +153,16 @@ Reconsider after major dependencies officially and consistently support a newer 
 
 ---
 
-# ADR-002 — MBDD2025 Is the Primary Dataset
+# ADR-002 — Propose MBDD2025 as the Primary Dataset
 
 **Date:** 2026-08-30
-**Status:** Accepted
+**Status:** Proposed
 
 ## Context
 
 InfraGuard AI needs a primary dataset suitable for UAV-based building surface defect detection.
+
+MBDD2025 is currently a candidate identified during planning. Its official source, version, license, annotation format, class IDs, and class names have not yet been verified.
 
 The project should support a realistic AI Engineering (kỹ thuật xây dựng hệ thống AI) workflow including:
 
@@ -171,21 +175,13 @@ The project should support a realistic AI Engineering (kỹ thuật xây dựng 
 
 ## Decision
 
-Use **MBDD2025** as the primary dataset for the first complete version of InfraGuard AI.
+Propose **MBDD2025** as the primary dataset for the first complete version of InfraGuard AI, subject to dataset registration and verification in the MBDD2025 Data Foundation milestone.
 
-The initial target classes are:
-
-```text
-crack
-leakage
-abscission
-corrosion
-bulge
-```
+No class taxonomy is accepted by this proposal.
 
 ## Rationale
 
-MBDD2025 provides:
+Planning references suggest that MBDD2025 may provide:
 
 * UAV imagery,
 * multiple building surface defect categories,
@@ -194,7 +190,7 @@ MBDD2025 provides:
 * a published benchmark,
 * known dataset limitations that can be investigated.
 
-It is well suited to the project's goal of demonstrating both Computer Vision (thị giác máy tính) and AI Engineering (kỹ thuật hệ thống AI).
+These characteristics must be verified against the official source before this proposal can become Accepted.
 
 ## Alternatives Considered
 
@@ -234,9 +230,9 @@ These limitations must be explicitly investigated rather than ignored.
 
 ## Consequences
 
-MBDD2025-specific data handling must be implemented first.
+Do not implement MBDD2025-specific data handling until the dataset metadata, annotation format, and taxonomy are verified.
 
-No other dataset should delay completion of the MBDD2025 baseline.
+If the proposal is accepted after verification, no other dataset should delay completion of the MBDD2025 baseline.
 
 ## Revisit When
 
@@ -244,10 +240,10 @@ Reconsider only if dataset quality issues make reliable training or evaluation i
 
 ---
 
-# ADR-003 — Use CUBIT-Det for External Validation
+# ADR-003 — Propose CUBIT-Det for External Validation
 
 **Date:** 2026-08-30
-**Status:** Accepted
+**Status:** Proposed
 
 ## Context
 
@@ -257,7 +253,7 @@ InfraGuard AI should evaluate domain shift (sự thay đổi miền dữ liệu)
 
 ## Decision
 
-Use **CUBIT-Det** as the primary external validation dataset.
+Propose **CUBIT-Det** as the primary external validation dataset, subject to official dataset and taxonomy verification.
 
 ## Rationale
 
@@ -304,10 +300,10 @@ Add more external datasets after v1.0 if additional generalization evidence is v
 
 ---
 
-# ADR-004 — YOLO11n Is the Initial Baseline
+# ADR-004 — Propose YOLO11n as the Initial Baseline
 
 **Date:** 2026-08-30
-**Status:** Accepted
+**Status:** Proposed
 
 ## Context
 
@@ -319,7 +315,7 @@ The goal is to establish a trustworthy reference point for later experiments.
 
 ## Decision
 
-Use:
+Propose:
 
 ```text
 YOLO11n
@@ -746,10 +742,10 @@ Role allocation may change if tooling capabilities evolve.
 
 ---
 
-# ADR-011 — Harness Provides Deterministic CI/CD Checks
+# ADR-011 — Propose Harness for Deterministic CI/CD Checks
 
 **Date:** 2026-08-30
-**Status:** Accepted
+**Status:** Proposed
 
 ## Context
 
@@ -759,7 +755,7 @@ The project requires deterministic checks for engineering correctness.
 
 ## Decision
 
-Harness will be used for CI/CD (tích hợp và triển khai liên tục) and automated engineering checks.
+Propose Harness for CI/CD (tích hợp và triển khai liên tục) and automated engineering checks.
 
 Initial Pull Request checks should include:
 
@@ -1032,10 +1028,10 @@ Git LFS or another artifact manager may be considered for selected files later.
 
 ---
 
-# ADR-016 — Data Validation Must Precede Model Training
+# ADR-016 — Propose Data Validation Before Model Training
 
 **Date:** 2026-08-30
-**Status:** Accepted
+**Status:** Proposed
 
 ## Context
 
@@ -1079,20 +1075,20 @@ No planned revisit.
 
 ---
 
-# ADR-017 — Data Leakage Is a Blocking Issue
+# ADR-017 — Propose Treating Data Leakage as a Blocking Issue
 
 **Date:** 2026-08-30
-**Status:** Accepted
+**Status:** Proposed
 
 ## Context
 
-MBDD2025 includes augmented samples, especially around the minority `bulge` class.
+Planning notes raise an unverified concern that MBDD2025 may contain augmented or near-duplicate samples.
 
 Near-duplicate samples appearing across train, validation, or test splits could inflate evaluation metrics.
 
 ## Decision
 
-Potential data leakage (rò rỉ dữ liệu) is considered a blocking ML issue.
+Propose treating potential data leakage (rò rỉ dữ liệu) as a blocking ML issue.
 
 The project must explicitly investigate:
 
@@ -1231,10 +1227,10 @@ No planned revisit.
 
 ---
 
-# ADR-020 — Tiled Inference Is a Core v1.0 Feature
+# ADR-020 — Propose Tiled Inference as a Core v1.0 Feature
 
 **Date:** 2026-08-30
-**Status:** Accepted
+**Status:** Proposed
 
 ## Context
 
@@ -1244,7 +1240,7 @@ Resizing high-resolution imagery directly to a small model input may destroy use
 
 ## Decision
 
-Implement and benchmark tiled inference (suy luận bằng cách chia ảnh thành các ô) as a core v1.0 project feature.
+Propose implementing and benchmarking tiled inference (suy luận bằng cách chia ảnh thành các ô) as a core v1.0 project feature.
 
 ## Rationale
 
@@ -1289,10 +1285,10 @@ After tiled inference benchmarking.
 
 ---
 
-# ADR-021 — Cross-Dataset Evaluation Is Required for v1.0
+# ADR-021 — Propose Cross-Dataset Evaluation for v1.0
 
 **Date:** 2026-08-30
-**Status:** Accepted
+**Status:** Proposed
 
 ## Context
 
@@ -1300,7 +1296,7 @@ Internal test performance does not prove real-world generalization.
 
 ## Decision
 
-InfraGuard AI v1.0 must include at least one external cross-dataset evaluation using CUBIT-Det.
+Propose including at least one external cross-dataset evaluation in v1.0, with CUBIT-Det as a candidate subject to verification.
 
 ## Rationale
 
@@ -1328,10 +1324,10 @@ After completing cross-dataset experiments.
 
 ---
 
-# ADR-022 — FastAPI Is the Default Model Serving Layer
+# ADR-022 — Propose FastAPI as the Model Serving Layer
 
 **Date:** 2026-08-30
-**Status:** Accepted
+**Status:** Proposed
 
 ## Context
 
@@ -1339,7 +1335,7 @@ The project needs to demonstrate that a trained model can be exposed as a usable
 
 ## Decision
 
-Use FastAPI as the default REST API (giao diện lập trình REST) framework.
+Propose FastAPI as the default REST API (giao diện lập trình REST) framework.
 
 Expected endpoints include:
 
@@ -1383,10 +1379,10 @@ Only if deployment requirements materially change.
 
 ---
 
-# ADR-023 — ONNX Is the Initial Deployment Export Format
+# ADR-023 — Propose ONNX as the Initial Deployment Export Format
 
 **Date:** 2026-08-30
-**Status:** Accepted
+**Status:** Proposed
 
 ## Context
 
@@ -1394,7 +1390,7 @@ The project should demonstrate model portability and inference optimization beyo
 
 ## Decision
 
-Export the selected production model to ONNX (định dạng trao đổi mô hình).
+Propose exporting the selected production model to ONNX (định dạng trao đổi mô hình).
 
 Benchmark at minimum:
 
@@ -1432,10 +1428,10 @@ TensorRT may be added after ONNX integration is stable.
 
 ---
 
-# ADR-024 — Docker Is Required for v1.0
+# ADR-024 — Propose Docker for v1.0
 
 **Date:** 2026-08-30
-**Status:** Accepted
+**Status:** Proposed
 
 ## Context
 
@@ -1445,7 +1441,7 @@ A recruiter or reviewer should be able to run the inference API predictably.
 
 ## Decision
 
-Containerize the final serving application with Docker.
+Propose containerizing the final serving application with Docker.
 
 ## Rationale
 
@@ -1755,34 +1751,34 @@ Revisit when work begins on the baseline training milestone.
 
 ---
 
-# Current Accepted Decision Summary
+# Current Decision Summary
 
 | ADR     | Decision                               | Status   |
 | ------- | -------------------------------------- | -------- |
 | ADR-001 | Python 3.11                            | Accepted |
-| ADR-002 | MBDD2025 primary dataset               | Accepted |
-| ADR-003 | CUBIT-Det external validation          | Accepted |
-| ADR-004 | YOLO11n baseline                       | Accepted |
+| ADR-002 | MBDD2025 primary dataset               | Proposed |
+| ADR-003 | CUBIT-Det external validation          | Proposed |
+| ADR-004 | YOLO11n baseline                       | Proposed |
 | ADR-005 | GitHub main is source of truth         | Accepted |
 | ADR-006 | PR required before main                | Accepted |
 | ADR-007 | ChatGPT reviews and plans next work    | Accepted |
 | ADR-008 | Human retains merge authority          | Accepted |
 | ADR-009 | Codex default implementation agent     | Accepted |
 | ADR-010 | Antigravity default verification agent | Accepted |
-| ADR-011 | Harness for deterministic CI/CD        | Accepted |
+| ADR-011 | Harness for deterministic CI/CD        | Proposed |
 | ADR-012 | Production logic outside notebooks     | Accepted |
 | ADR-013 | Configuration-driven experiments       | Accepted |
 | ADR-014 | Raw datasets are read-only             | Accepted |
 | ADR-015 | No raw data or large weights in Git    | Accepted |
-| ADR-016 | Validate data before model training    | Accepted |
-| ADR-017 | Data leakage is blocking               | Accepted |
+| ADR-016 | Validate data before model training    | Proposed |
+| ADR-017 | Data leakage is blocking               | Proposed |
 | ADR-018 | Baseline before optimization           | Accepted |
 | ADR-019 | Error analysis before major changes    | Accepted |
-| ADR-020 | Tiled inference required               | Accepted |
-| ADR-021 | Cross-dataset evaluation required      | Accepted |
-| ADR-022 | FastAPI serving                        | Accepted |
-| ADR-023 | ONNX deployment format                 | Accepted |
-| ADR-024 | Docker required                        | Accepted |
+| ADR-020 | Tiled inference                        | Proposed |
+| ADR-021 | Cross-dataset evaluation               | Proposed |
+| ADR-022 | FastAPI serving                        | Proposed |
+| ADR-023 | ONNX deployment format                 | Proposed |
+| ADR-024 | Docker                                 | Proposed |
 | ADR-025 | Satellite imagery out of v1.0          | Accepted |
 | ADR-026 | No unnecessary LLM/RAG features        | Accepted |
 | ADR-027 | Metrics must be real and reproducible  | Accepted |
