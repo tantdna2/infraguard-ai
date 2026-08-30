@@ -216,3 +216,19 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local datasets
+data/*
+!data/README.md
+!data/.gitkeep
+
+# Experiment and model outputs
+runs/
+weights/
+checkpoints/
+artifacts/
+
+# Model files
+*.pt
+*.pth
+*.onnx

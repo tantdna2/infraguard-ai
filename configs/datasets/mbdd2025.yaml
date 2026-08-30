@@ -1,0 +1,7 @@
+name: MBDD2025
+classes:
+  - crack
+  - leakage
+  - abscission
+  - corrosion
+  - bulge
