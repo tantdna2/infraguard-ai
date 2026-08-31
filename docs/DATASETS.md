@@ -87,6 +87,14 @@ directories or file lists.
   `class_id x_center y_center width height`, with coordinates normalized to
   `[0, 1]`.
 
+### Project Loader Decision
+
+- InfraGuard AI currently uses YOLO TXT as the primary MBDD2025 loader
+  representation.
+- PASCAL VOC XML remains available as an independent annotation representation
+  and is intentionally deferred for cross-validation in a later
+  dataset-validation Issue.
+
 ### Class Taxonomy
 
 **Officially verified:** The following ID-to-name mapping is canonical for the
@@ -109,8 +117,6 @@ official MBDD2025 v1.0 release.
   not been verified.
 - No official SHA256 checksum has been verified; the SHA256 value above is
   local evidence only.
-- The project has not yet selected whether PASCAL VOC XML or YOLO TXT will be
-  the primary annotation input for its dataset loader.
 
 ### Evidence Sources
 
