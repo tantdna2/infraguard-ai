@@ -2,29 +2,127 @@
 
 ## MBDD2025
 
-Status: Planned / Unverified
+### Registration Status
 
-### Source
+- Local archive available.
+- Local archive identity matches the official Zenodo release.
+- Official metadata verified.
 
-Unverified. The official dataset source has not been confirmed.
+### Local Dataset
+
+Local storage convention:
+
+```text
+data/raw/mbdd2025/MBDD2025.zip
+```
+
+The archive is local only and is ignored by Git through the repository's
+`data/*` rule. It is raw data and must be treated as read-only. Inspection and
+validation tools must not modify the archive or its contents in place.
+
+### Integrity
+
+- Local archive checksum (SHA256):
+  `db37469e0ee59be132d0e3773affec89a1c49fad3a873a9d47e7221bcfc3f95e`
+- Local archive checksum (MD5): `b2dfdce060ef687c327b1f8203b52636`
+- Official Zenodo checksum (MD5): `b2dfdce060ef687c327b1f8203b52636`
+
+The local MD5 matches the checksum published by Zenodo. The SHA256 value is a
+local archive checksum; no official SHA256 checksum has been verified.
+
+### Official Source
+
+- Dataset record: <https://zenodo.org/records/15622584>
+- Dataset DOI: <https://doi.org/10.5281/zenodo.15622584>
+- Official archive: <https://zenodo.org/records/15622584/files/MBDD2025.zip>
+
+### Publication
+
+- **Paper:** "A dataset of building surface defects collected by UAVs for
+  machine learning-based detection"
+- **Authors:** Qikai Zha, Yiming Yao, Yufan Zheng, Wanqi Ma, and Wenkang Zhang
+- **Year:** 2025
+- **Venue:** *Scientific Data* (Nature Portfolio), Volume 12, Article 2031
+- **DOI:** <https://doi.org/10.1038/s41597-025-06318-5>
 
 ### Version
 
-Unverified.
+The official Zenodo release is explicitly versioned as **v1.0** and was
+published on 2025-06-09.
 
-### License
+### License and Usage Terms
 
-Unverified. The dataset license must be confirmed from the official source before use.
+The dataset is released under the **Creative Commons Attribution 4.0
+International (CC BY 4.0)** license. The license permits sharing and adaptation,
+including commercial use, provided its attribution and other terms are
+followed.
+
+This dataset license is separate from the repository's MIT License. The MIT
+License for InfraGuard AI source code does not apply to MBDD2025.
+
+### Dataset Structure
+
+**VERIFIED:** The locally observed structure matches the structure documented
+by the official source.
+
+```text
+MBDD2025/
+├── Annotations/    # 14,471 PASCAL VOC XML files
+├── JPEGImages/     # 14,471 JPEG images
+├── Labels/         # 14,471 YOLO TXT files
+└── README.md       # Dataset metadata, license, and citation
+```
+
+The official release does not contain fixed train, validation, or test
+directories or file lists.
 
 ### Annotation Format
 
-Unverified.
+**Officially verified:** MBDD2025 provides two annotation representations for
+2D object detection:
+
+- PASCAL VOC XML in `Annotations/`, using unnormalized pixel coordinates
+  `xmin`, `ymin`, `xmax`, and `ymax`.
+- YOLO TXT in `Labels/`, using
+  `class_id x_center y_center width height`, with coordinates normalized to
+  `[0, 1]`.
 
 ### Class Taxonomy
 
-Unverified. No class IDs or class names are treated as canonical during repository bootstrap.
+**Officially verified:** The following ID-to-name mapping is canonical for the
+official MBDD2025 v1.0 release.
 
-Dataset registration, taxonomy verification, and configuration completion belong to the MBDD2025 Data Foundation milestone.
+| Class ID | Class name |
+| -------- | ---------- |
+| 0        | crack      |
+| 1        | leakage    |
+| 2        | abscission |
+| 3        | corrosion  |
+| 4        | bulge      |
+
+### Known Unknowns
+
+- The official release does not provide fixed train, validation, or test file
+  lists.
+- The publication describes a 70%/20%/10% train/validation/test ratio, but the
+  exact sample membership, random seed, and reproducible split procedure have
+  not been verified.
+- No official SHA256 checksum has been verified; the SHA256 value above is
+  local evidence only.
+- The project has not yet selected whether PASCAL VOC XML or YOLO TXT will be
+  the primary annotation input for its dataset loader.
+
+### Evidence Sources
+
+- Zenodo dataset record: <https://zenodo.org/records/15622584>
+- Zenodo dataset DOI: <https://doi.org/10.5281/zenodo.15622584>
+- Official archive download:
+  <https://zenodo.org/records/15622584/files/MBDD2025.zip>
+- Peer-reviewed publication:
+  <https://doi.org/10.1038/s41597-025-06318-5>
+
+Dataset configuration completion remains part of the MBDD2025 Data Foundation
+milestone.
 
 ---
 
