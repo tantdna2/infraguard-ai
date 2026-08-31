@@ -172,7 +172,9 @@ def test_load_mbdd2025_discovers_images_in_deterministic_order(
     """Only direct JPEG children are returned in stable filename order."""
     dataset_root = tmp_path / "MBDD2025"
     images_directory = dataset_root / "JPEGImages"
+    labels_directory = dataset_root / "Labels"
     images_directory.mkdir(parents=True)
+    labels_directory.mkdir()
     (images_directory / "b.jpg").touch()
     (images_directory / "a.jpg").touch()
     (images_directory / "c.png").touch()
@@ -226,7 +228,9 @@ def test_load_mbdd2025_represents_missing_label_explicitly(
     """An image without a label has no invented label path or boxes."""
     dataset_root = tmp_path / "MBDD2025"
     images_directory = dataset_root / "JPEGImages"
+    labels_directory = dataset_root / "Labels"
     images_directory.mkdir(parents=True)
+    labels_directory.mkdir()
     image_path = images_directory / "missing.jpg"
     image_path.touch()
 
@@ -262,4 +266,14 @@ def test_load_mbdd2025_requires_image_directory(tmp_path: Path) -> None:
     dataset_root.mkdir()
 
     with pytest.raises(DatasetLayoutError, match=r"JPEGImages"):
+        load_mbdd2025(dataset_root)
+
+
+def test_load_mbdd2025_requires_label_directory(tmp_path: Path) -> None:
+    """A missing Labels directory produces a clear layout error."""
+    dataset_root = tmp_path / "MBDD2025"
+    images_directory = dataset_root / "JPEGImages"
+    images_directory.mkdir(parents=True)
+
+    with pytest.raises(DatasetLayoutError, match=r"Labels"):
         load_mbdd2025(dataset_root)

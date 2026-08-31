@@ -12,7 +12,7 @@ class AnnotationParseError(ValueError):
 
 
 class DatasetLayoutError(FileNotFoundError):
-    """Raised when the required MBDD2025 image directory is unavailable."""
+    """Raised when a required MBDD2025 dataset directory is unavailable."""
 
 
 def _parse_yolo_line(
@@ -91,6 +91,12 @@ def load_mbdd2025(dataset_root: Path) -> tuple[ImageRecord, ...]:
         )
 
     labels_directory = dataset_root / "Labels"
+    if not labels_directory.is_dir():
+        raise DatasetLayoutError(
+            "MBDD2025 label directory does not exist or is not a directory: "
+            f"{labels_directory}"
+        )
+
     image_paths = sorted(
         (
             path
