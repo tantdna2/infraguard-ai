@@ -1,2 +1,68 @@
 name: MBDD2025
-status: unverified
+status: verified
+version: "v1.0"
+release_date: "2025-06-09"
+task: object_detection
+
+source:
+  doi: 10.5281/zenodo.15622584
+  record_url: https://zenodo.org/records/15622584
+  archive_url: https://zenodo.org/records/15622584/files/MBDD2025.zip
+
+publication:
+  title: A dataset of building surface defects collected by UAVs for machine learning-based detection
+  authors:
+    - Qikai Zha
+    - Yiming Yao
+    - Yufan Zheng
+    - Wanqi Ma
+    - Wenkang Zhang
+  year: 2025
+  venue: Scientific Data
+  volume: 12
+  article: 2031
+  doi: 10.1038/s41597-025-06318-5
+  url: https://doi.org/10.1038/s41597-025-06318-5
+
+license:
+  identifier: CC-BY-4.0
+  name: Creative Commons Attribution 4.0 International
+
+archive:
+  filename: MBDD2025.zip
+  official_checksum:
+    algorithm: md5
+    value: b2dfdce060ef687c327b1f8203b52636
+
+archive_structure:
+  root_directory: MBDD2025
+  images_directory: JPEGImages
+  pascal_voc_annotations_directory: Annotations
+  yolo_labels_directory: Labels
+  metadata_file: README.md
+
+annotation_formats:
+  pascal_voc_xml:
+    extension: .xml
+    coordinates:
+      - xmin
+      - ymin
+      - xmax
+      - ymax
+    normalized: false
+  yolo_txt:
+    extension: .txt
+    fields:
+      - class_id
+      - x_center
+      - y_center
+      - width
+      - height
+    normalized: true
+
+classes:
+  0: crack
+  1: leakage
+  2: abscission
+  3: corrosion
+  4: bulge
