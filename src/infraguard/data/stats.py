@@ -1,9 +1,12 @@
 """Typed schemas and numeric utilities for dataset statistics."""
 
 import math
+from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+
+from PIL import Image, UnidentifiedImageError
 
 from infraguard.data.mbdd import (
     AnnotationParseError,
@@ -77,6 +80,15 @@ class ImageStatistics:
 
 
 @dataclass(frozen=True, slots=True)
+class ImageResolutionCount:
+    """Number of readable images with one exact pixel resolution."""
+
+    width: int
+    height: int
+    image_count: int
+
+
+@dataclass(frozen=True, slots=True)
 class QualityAccounting:
     """Counts that make exclusions and source-quality findings explicit.
 
@@ -108,11 +120,19 @@ class MBDD2025AnnotationStatistics:
 
 
 @dataclass(frozen=True, slots=True)
+class MBDD2025ImageStatistics:
+    """Image-derived MBDD2025 summaries and exact resolution counts."""
+
+    summary: ImageStatistics
+    resolution_counts: tuple[ImageResolutionCount, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class MBDD2025Statistics:
-    """Typed top-level skeleton for a future MBDD2025 statistics report.
+    """Full typed core result for MBDD2025 dataset statistics.
 
     ``classes`` is expected to use deterministic class-ID order when populated.
-    Task 5.1 defines this contract but does not calculate dataset statistics.
+    ``resolution_counts`` uses deterministic ``(width, height)`` order.
     """
 
     schema_version: int
@@ -121,11 +141,113 @@ class MBDD2025Statistics:
     objects_per_image: NumericSummary
     bounding_boxes: BoundingBoxStatistics
     images: ImageStatistics
+    resolution_counts: tuple[ImageResolutionCount, ...]
     quality: QualityAccounting
 
 
 class DatasetStatisticsError(ValueError):
     """Raised when structural anomalies prevent meaningful statistics."""
+
+
+def compute_mbdd2025_statistics(
+    dataset_root: Path,
+    *,
+    class_names: Mapping[int, str],
+) -> MBDD2025Statistics:
+    """Compute the typed core MBDD2025 statistics report."""
+    annotation_statistics = compute_mbdd2025_annotation_statistics(
+        dataset_root,
+        class_names=class_names,
+    )
+    image_statistics = compute_mbdd2025_image_statistics(dataset_root)
+    if image_statistics.summary.width.count != annotation_statistics.counts.image_count:
+        raise DatasetStatisticsError(
+            "Discovered image count changed while computing dataset statistics"
+        )
+
+    return MBDD2025Statistics(
+        schema_version=1,
+        counts=annotation_statistics.counts,
+        classes=annotation_statistics.classes,
+        objects_per_image=annotation_statistics.objects_per_image,
+        bounding_boxes=annotation_statistics.bounding_boxes,
+        images=image_statistics.summary,
+        resolution_counts=image_statistics.resolution_counts,
+        quality=annotation_statistics.quality,
+    )
+
+
+def compute_mbdd2025_image_statistics(
+    dataset_root: Path,
+) -> MBDD2025ImageStatistics:
+    """Compute per-image-weighted summaries from each readable JPEG.
+
+    Every image is decoded once and converted to Pillow mode ``L``. Brightness
+    is its arithmetic mean grayscale intensity; contrast is its population
+    standard deviation. Both retain the grayscale intensity scale of 0--255.
+    """
+    image_paths = _discover_image_paths(dataset_root)
+    widths: list[int] = []
+    heights: list[int] = []
+    brightness_values: list[float] = []
+    contrast_values: list[float] = []
+    resolution_counter: Counter[tuple[int, int]] = Counter()
+
+    for image_path in image_paths:
+        try:
+            with Image.open(image_path) as image:
+                image.load()
+                width, height = image.size
+                with image.convert("L") as grayscale:
+                    brightness, contrast = _grayscale_moments(grayscale)
+        except (
+            UnidentifiedImageError,
+            OSError,
+            SyntaxError,
+            Image.DecompressionBombError,
+        ) as error:
+            raise DatasetStatisticsError(
+                f"Could not decode JPEG image: {image_path}"
+            ) from error
+
+        widths.append(width)
+        heights.append(height)
+        brightness_values.append(brightness)
+        contrast_values.append(contrast)
+        resolution_counter[(width, height)] += 1
+
+    resolution_counts = tuple(
+        ImageResolutionCount(
+            width=width,
+            height=height,
+            image_count=image_count,
+        )
+        for (width, height), image_count in sorted(resolution_counter.items())
+    )
+    return MBDD2025ImageStatistics(
+        summary=ImageStatistics(
+            width=summarize_numeric(widths),
+            height=summarize_numeric(heights),
+            brightness=summarize_numeric(brightness_values),
+            contrast=summarize_numeric(contrast_values),
+        ),
+        resolution_counts=resolution_counts,
+    )
+
+
+def _grayscale_moments(grayscale: Image.Image) -> tuple[float, float]:
+    histogram = grayscale.histogram()
+    pixel_count = grayscale.width * grayscale.height
+    intensity_sum = sum(intensity * count for intensity, count in enumerate(histogram))
+    brightness = intensity_sum / pixel_count
+    variance = (
+        math.fsum(
+            count * (intensity - brightness) ** 2
+            for intensity, count in enumerate(histogram)
+        )
+        / pixel_count
+    )
+    return brightness, math.sqrt(variance)
 
 
 def compute_mbdd2025_annotation_statistics(
@@ -277,29 +399,14 @@ def compute_mbdd2025_annotation_statistics(
 def _discover_dataset(
     dataset_root: Path,
 ) -> tuple[tuple[Path, ...], tuple[Path, ...], tuple[tuple[Path, Path], ...]]:
-    images_directory = dataset_root / _IMAGE_DIRECTORY_NAME
+    image_paths = _discover_image_paths(dataset_root)
     labels_directory = dataset_root / _LABEL_DIRECTORY_NAME
-    if not images_directory.is_dir():
-        raise DatasetLayoutError(
-            "MBDD2025 image directory does not exist or is not a directory: "
-            f"{images_directory}"
-        )
     if not labels_directory.is_dir():
         raise DatasetLayoutError(
             "MBDD2025 label directory does not exist or is not a directory: "
             f"{labels_directory}"
         )
 
-    image_paths = tuple(
-        sorted(
-            (
-                path
-                for path in images_directory.iterdir()
-                if path.is_file() and path.suffix.casefold() in _IMAGE_SUFFIXES
-            ),
-            key=lambda path: (path.name.casefold(), path.name),
-        )
-    )
     label_paths = tuple(
         sorted(
             (
@@ -335,6 +442,25 @@ def _discover_dataset(
         for image_path in image_paths
     )
     return image_paths, label_paths, image_label_pairs
+
+
+def _discover_image_paths(dataset_root: Path) -> tuple[Path, ...]:
+    images_directory = dataset_root / _IMAGE_DIRECTORY_NAME
+    if not images_directory.is_dir():
+        raise DatasetLayoutError(
+            "MBDD2025 image directory does not exist or is not a directory: "
+            f"{images_directory}"
+        )
+    return tuple(
+        sorted(
+            (
+                path
+                for path in images_directory.iterdir()
+                if path.is_file() and path.suffix.casefold() in _IMAGE_SUFFIXES
+            ),
+            key=lambda path: (path.name.casefold(), path.name),
+        )
+    )
 
 
 def _annotation_exclusion_code(

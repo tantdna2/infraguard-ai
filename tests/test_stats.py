@@ -6,18 +6,23 @@ from dataclasses import FrozenInstanceError, asdict
 from pathlib import Path
 
 import pytest
+from PIL import Image
 from infraguard.data.mbdd import YoloAnnotationRow
 from infraguard.data.stats import (
     BoundingBoxStatistics,
     ClassStatistics,
     DatasetCounts,
     DatasetStatisticsError,
+    ImageResolutionCount,
     ImageStatistics,
     MBDD2025AnnotationStatistics,
+    MBDD2025ImageStatistics,
     MBDD2025Statistics,
     NumericSummary,
     QualityAccounting,
     compute_mbdd2025_annotation_statistics,
+    compute_mbdd2025_image_statistics,
+    compute_mbdd2025_statistics,
     summarize_numeric,
 )
 
@@ -56,6 +61,44 @@ def _assert_single_value_summary(
         summary.p75,
     ):
         assert metric == pytest.approx(expected)
+
+
+def _write_constant_jpeg(
+    dataset_root: Path,
+    image_name: str,
+    *,
+    size: tuple[int, int],
+    intensity: int,
+    mode: str = "L",
+) -> Path:
+    images_directory = dataset_root / "JPEGImages"
+    images_directory.mkdir(parents=True, exist_ok=True)
+    color: int | tuple[int, int, int]
+    if mode == "RGB":
+        color = (intensity, intensity, intensity)
+    else:
+        color = intensity
+    image_path = images_directory / f"{image_name}.jpg"
+    with Image.new(mode, size, color=color) as image:
+        image.save(image_path, format="JPEG", quality=100, subsampling=0)
+    return image_path
+
+
+def _write_two_level_jpeg(
+    dataset_root: Path,
+    image_name: str,
+    *,
+    size: tuple[int, int],
+) -> Path:
+    width, height = size
+    assert width % 16 == 0
+    images_directory = dataset_root / "JPEGImages"
+    images_directory.mkdir(parents=True, exist_ok=True)
+    image_path = images_directory / f"{image_name}.jpg"
+    with Image.new("L", size, color=0) as image:
+        image.paste(255, (width // 2, 0, width, height))
+        image.save(image_path, format="JPEG", quality=100)
+    return image_path
 
 
 def test_empty_distribution_uses_none_for_unavailable_metrics() -> None:
@@ -176,6 +219,7 @@ def test_dataset_statistics_skeleton_is_immutable_and_json_compatible() -> None:
             brightness=empty,
             contrast=empty,
         ),
+        resolution_counts=(),
         quality=QualityAccounting(
             total_annotation_row_count=0,
             usable_annotation_count=0,
@@ -432,3 +476,160 @@ def test_structural_label_anomaly_is_not_treated_as_empty(
             dataset_root,
             class_names=_CLASS_NAMES,
         )
+
+
+def test_image_resolution_summaries_and_distribution_are_deterministic(
+    tmp_path: Path,
+) -> None:
+    """Exact resolutions are counted in stable width-height order."""
+    dataset_root = tmp_path / "MBDD2025"
+    _write_constant_jpeg(
+        dataset_root,
+        "z-last",
+        size=(10, 20),
+        intensity=0,
+    )
+    _write_constant_jpeg(
+        dataset_root,
+        "a-first",
+        size=(30, 40),
+        intensity=64,
+        mode="RGB",
+    )
+    _write_constant_jpeg(
+        dataset_root,
+        "m-middle",
+        size=(10, 20),
+        intensity=255,
+    )
+
+    first = compute_mbdd2025_image_statistics(dataset_root)
+    second = compute_mbdd2025_image_statistics(dataset_root)
+
+    assert first == second
+    assert isinstance(first, MBDD2025ImageStatistics)
+    assert first.summary.width == summarize_numeric([10, 30, 10])
+    assert first.summary.height == summarize_numeric([20, 40, 20])
+    assert first.resolution_counts == (
+        ImageResolutionCount(width=10, height=20, image_count=2),
+        ImageResolutionCount(width=30, height=40, image_count=1),
+    )
+
+
+def test_brightness_uses_one_grayscale_mean_per_image(tmp_path: Path) -> None:
+    """Constant grayscale and RGB images yield controlled per-image means."""
+    dataset_root = tmp_path / "MBDD2025"
+    _write_constant_jpeg(
+        dataset_root,
+        "black",
+        size=(8, 8),
+        intensity=0,
+    )
+    _write_constant_jpeg(
+        dataset_root,
+        "middle",
+        size=(16, 8),
+        intensity=128,
+        mode="RGB",
+    )
+    _write_constant_jpeg(
+        dataset_root,
+        "white",
+        size=(8, 16),
+        intensity=255,
+    )
+
+    result = compute_mbdd2025_image_statistics(dataset_root)
+
+    assert result.summary.brightness == summarize_numeric([0, 128, 255])
+    assert result.summary.contrast == summarize_numeric([0, 0, 0])
+
+
+def test_contrast_is_population_standard_deviation(tmp_path: Path) -> None:
+    """Equal black and white pixel groups have known population deviation."""
+    dataset_root = tmp_path / "MBDD2025"
+    _write_two_level_jpeg(
+        dataset_root,
+        "two-level",
+        size=(16, 8),
+    )
+
+    result = compute_mbdd2025_image_statistics(dataset_root)
+
+    _assert_single_value_summary(result.summary.brightness, 127.5)
+    _assert_single_value_summary(result.summary.contrast, 127.5)
+
+
+def test_brightness_and_contrast_weight_each_image_equally(tmp_path: Path) -> None:
+    """A large image contributes one observation, not one per pixel."""
+    dataset_root = tmp_path / "MBDD2025"
+    _write_constant_jpeg(
+        dataset_root,
+        "small-constant",
+        size=(8, 8),
+        intensity=0,
+    )
+    _write_two_level_jpeg(
+        dataset_root,
+        "large-two-level",
+        size=(160, 80),
+    )
+
+    result = compute_mbdd2025_image_statistics(dataset_root)
+
+    assert result.summary.brightness.count == 2
+    assert result.summary.brightness.mean == pytest.approx(63.75)
+    assert result.summary.contrast.count == 2
+    assert result.summary.contrast.mean == pytest.approx(63.75)
+
+
+def test_unreadable_jpeg_raises_with_identifying_path(tmp_path: Path) -> None:
+    """A discovered but undecodable JPEG fails explicitly."""
+    dataset_root = tmp_path / "MBDD2025"
+    images_directory = dataset_root / "JPEGImages"
+    images_directory.mkdir(parents=True)
+    bad_image_path = images_directory / "bad.jpg"
+    bad_image_path.write_bytes(b"not a jpeg")
+
+    with pytest.raises(DatasetStatisticsError, match=r"bad\.jpg"):
+        compute_mbdd2025_image_statistics(dataset_root)
+
+
+def test_full_statistics_composes_annotation_and_image_results(tmp_path: Path) -> None:
+    """The top-level result combines approved annotation and image statistics."""
+    dataset_root = _write_synthetic_dataset(
+        tmp_path,
+        {"combined": "0 0.5 0.5 0.2 0.2\n"},
+    )
+    _write_constant_jpeg(
+        dataset_root,
+        "combined",
+        size=(12, 10),
+        intensity=64,
+        mode="RGB",
+    )
+
+    result = compute_mbdd2025_statistics(
+        dataset_root,
+        class_names=_CLASS_NAMES,
+    )
+
+    assert result.schema_version == 1
+    assert result.counts == DatasetCounts(
+        image_count=1,
+        label_file_count=1,
+        usable_annotation_count=1,
+    )
+    assert result.classes[0] == ClassStatistics(
+        class_id=0,
+        class_name="crack",
+        image_count=1,
+        instance_count=1,
+    )
+    _assert_single_value_summary(result.images.width, 12)
+    _assert_single_value_summary(result.images.height, 10)
+    _assert_single_value_summary(result.images.brightness, 64)
+    _assert_single_value_summary(result.images.contrast, 0)
+    assert result.resolution_counts == (
+        ImageResolutionCount(width=12, height=10, image_count=1),
+    )
