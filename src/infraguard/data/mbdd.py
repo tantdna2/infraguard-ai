@@ -1,5 +1,6 @@
 """MBDD2025 dataset integration."""
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from infraguard.data.schemas import BoundingBox, ImageRecord
@@ -15,12 +16,34 @@ class DatasetLayoutError(FileNotFoundError):
     """Raised when a required MBDD2025 dataset directory is unavailable."""
 
 
-def _parse_yolo_line(
+@dataclass(frozen=True, slots=True)
+class YoloAnnotationRow:
+    """A parsed YOLO annotation row in normalized center-width-height form."""
+
+    class_id: int
+    x_center: float
+    y_center: float
+    width: float
+    height: float
+
+    def to_bounding_box(self) -> BoundingBox:
+        """Convert the YOLO row to the normalized internal XYXY representation."""
+        return BoundingBox(
+            class_id=self.class_id,
+            xmin=self.x_center - self.width / 2,
+            ymin=self.y_center - self.height / 2,
+            xmax=self.x_center + self.width / 2,
+            ymax=self.y_center + self.height / 2,
+        )
+
+
+def parse_yolo_line(
     line: str,
     *,
     label_path: Path,
     line_number: int,
-) -> BoundingBox:
+) -> YoloAnnotationRow:
+    """Parse one YOLO annotation row without applying semantic validation."""
     fields = line.split()
     if len(fields) != 5:
         raise AnnotationParseError(
@@ -54,12 +77,12 @@ def _parse_yolo_line(
             ) from error
 
     x_center, y_center, width, height = coordinates
-    return BoundingBox(
+    return YoloAnnotationRow(
         class_id=class_id,
-        xmin=x_center - width / 2,
-        ymin=y_center - height / 2,
-        xmax=x_center + width / 2,
-        ymax=y_center + height / 2,
+        x_center=x_center,
+        y_center=y_center,
+        width=width,
+        height=height,
     )
 
 
@@ -70,13 +93,12 @@ def parse_yolo_label(label_path: Path) -> tuple[BoundingBox, ...]:
         for line_number, line in enumerate(label_file, start=1):
             if not line.strip():
                 continue
-            boxes.append(
-                _parse_yolo_line(
-                    line,
-                    label_path=label_path,
-                    line_number=line_number,
-                )
+            row = parse_yolo_line(
+                line,
+                label_path=label_path,
+                line_number=line_number,
             )
+            boxes.append(row.to_bounding_box())
 
     return tuple(boxes)
 

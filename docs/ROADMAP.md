@@ -105,17 +105,17 @@ Understand and validate MBDD2025 before any serious model training.
 
 ## Dataset Validation
 
-* [ ] Detect missing images
-* [ ] Detect missing annotations
-* [ ] Detect corrupted images
-* [ ] Detect unreadable files
-* [ ] Detect malformed annotation rows
-* [ ] Detect invalid class IDs
-* [ ] Detect invalid normalized coordinates
-* [ ] Detect zero-area bounding boxes
-* [ ] Detect bounding boxes outside image boundaries
-* [ ] Detect duplicate bounding boxes
-* [ ] Generate machine-readable validation report
+* [x] Detect missing images
+* [x] Detect missing annotations
+* [x] Detect corrupted images
+* [x] Detect unreadable files
+* [x] Detect malformed annotation rows
+* [x] Detect invalid class IDs
+* [x] Detect invalid normalized coordinates
+* [x] Detect zero-area bounding boxes
+* [x] Detect bounding boxes outside image boundaries
+* [x] Detect duplicate bounding boxes
+* [x] Generate machine-readable validation report
 
 ## Dataset Statistics
 
