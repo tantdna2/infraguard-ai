@@ -132,6 +132,137 @@ the conclusion that the 116 material OOB results are source-annotation quality
 findings. This is targeted evidence only; a full YOLO-versus-VOC
 cross-validation has not been completed.
 
+### Day 5 Dataset Statistics
+
+The statistics below were computed read-only from the official local MBDD2025
+v1.0 release using the repository's public statistics API and CLI. They are
+measured values, not values inferred from the paper.
+
+#### Dataset and Annotation Counts
+
+| Metric                    |  Count |
+| ------------------------- | -----: |
+| JPEG images               | 14,471 |
+| YOLO label files          | 14,471 |
+| Total annotation rows     | 57,613 |
+| Usable annotations        | 57,613 |
+| Excluded annotations      |      0 |
+| Material OOB annotations  |    116 |
+| Empty label files         |      8 |
+
+The 116 material OOB annotations are a usable subset of the 57,613 source
+annotations for statistics purposes; they are not additional instances.
+
+| Class ID | Class      | Image count | Instance count |
+| -------: | ---------- | ----------: | -------------: |
+|        0 | crack      |       6,253 |         17,044 |
+|        1 | leakage    |       2,464 |          6,642 |
+|        2 | abscission |       5,166 |         22,702 |
+|        3 | corrosion  |       2,102 |          9,207 |
+|        4 | bulge      |       1,337 |          2,018 |
+
+The class instance counts total 57,613, matching the usable annotation count.
+
+#### Objects per Image
+
+| Count  | Min | Max |   Mean | Median | P25 | P75 |
+| -----: | --: | --: | -----: | -----: | --: | --: |
+| 14,471 |   0 |  84 | 3.9813 |      2 |   1 |   5 |
+
+#### Bounding Boxes
+
+Bounding-box statistics use the normalized YOLO source values without
+reconstructing or clipping width, height, area, or centers.
+
+| Metric       |  Count |         Min |       Max |     Mean |   Median |      P25 |      P75 |
+| ------------ | -----: | ----------: | --------: | -------: | -------: | -------: | -------: |
+| Width        | 57,613 |    0.001086 |  1.000000 | 0.159931 | 0.090766 | 0.045359 | 0.194760 |
+| Height       | 57,613 |    0.001944 |  1.000000 | 0.180540 | 0.109222 | 0.054944 | 0.218958 |
+| Area         | 57,613 | 4.20801e-06 |  1.000000 | 0.032810 | 0.011452 | 0.003801 | 0.033355 |
+| Aspect ratio | 57,613 |    0.014525 | 27.502565 | 1.618539 | 0.872121 | 0.414529 | 1.864153 |
+| Center X     | 57,613 |    0.002922 |  0.998145 | 0.507413 | 0.508605 | 0.318563 | 0.694844 |
+| Center Y     | 57,613 |    0.004868 |  0.995451 | 0.474777 | 0.467569 | 0.312417 | 0.625910 |
+
+#### Image Statistics
+
+| Metric     |  Count |       Min |        Max |        Mean |      Median |         P25 |         P75 |
+| ---------- | -----: | --------: | ---------: | ----------: | ----------: | ----------: | ----------: |
+| Width      | 14,471 |       720 |       1280 | 1267.627669 |        1280 |        1280 |        1280 |
+| Height     | 14,471 |       544 |       1280 |  728.430654 |         720 |         720 |         720 |
+| Brightness | 14,471 | 18.574378 | 185.177644 |  109.879749 |  109.137610 |   99.604147 |  120.668219 |
+| Contrast   | 14,471 |  9.934902 |  91.460690 |   57.856010 |   59.485999 |   50.230766 |   67.342122 |
+
+The exact decoded-image resolution distribution is:
+
+| Resolution | Image count |
+| ---------- | ----------: |
+| 1280 x 720 |      14,102 |
+| 720 x 1280 |         254 |
+| 960 x 544  |         115 |
+
+Displayed continuous statistics are rounded for readability; deterministic
+JSON output preserves the computed float values.
+
+#### Methodology
+
+- YOLO TXT is the primary annotation representation. Each usable source row is
+  one annotation instance. Exact duplicate source rows are not deduplicated.
+- A class image count includes an image at most once for that class, regardless
+  of how many instances of the class the image contains.
+- Empty labels represent zero-object images. Malformed or semantically unusable
+  rows are excluded from annotation-derived aggregates, with one explicit root
+  cause recorded for each exclusion.
+- Finite source rows with valid normalized components and positive sizes remain
+  usable when their reconstructed XYXY boxes are materially out of bounds.
+  Their original YOLO values are retained without clamping, clipping, rewriting,
+  or modifying the raw annotation files.
+- Numeric summaries contain `count`, `min`, `max`, `mean`, `median`, `p25`, and
+  `p75`. Percentiles use linear interpolation at the zero-based index
+  `(n - 1) * q`.
+- Image width and height come from decoded JPEGs. Exact resolution counts group
+  decoded `(width, height)` pairs. A discovered JPEG that cannot be decoded
+  fails the statistics run explicitly rather than being skipped.
+- Each image is converted to Pillow mode `L`. Its brightness is the arithmetic
+  mean of its grayscale pixel intensities on the `0` (black) to `255` (white)
+  scale.
+- An image's contrast is the population standard deviation of those mode `L`
+  intensities around that image's brightness, in intensity units on the same
+  `0`-to-`255` scale.
+- Each image contributes one brightness observation and one contrast
+  observation to the dataset summaries. Images are not weighted by pixel count.
+
+The statistics policy does not mean that the dataset passes validation. The
+Day 4 validator reports the same 116 material boxes as
+`ERROR OUT_OF_BOUNDS_BOX` and the 8 empty labels as `INFO EMPTY_LABEL`.
+Retaining the OOB source rows in aggregates is an intentional statistics policy
+that preserves source data; it does not reclassify, repair, or hide the
+validator findings. In the verified run, all 57,613 rows were usable for the
+statistics policy and no rows were excluded. The exclusion counters for
+malformed rows, invalid classes, invalid coordinates, negative sizes, and
+zero-area boxes were all zero.
+
+#### Reproduction
+
+Print a concise summary using the canonical dataset configuration:
+
+```bash
+python scripts/dataset_statistics.py \
+  --dataset-root data/raw/mbdd2025/MBDD2025/
+```
+
+Write the full deterministic, strict JSON report to a path outside both
+`data/raw/` and the supplied dataset root:
+
+```bash
+python scripts/dataset_statistics.py \
+  --dataset-root data/raw/mbdd2025/MBDD2025/ \
+  --output <PATH_OUTSIDE_DATA_RAW>
+```
+
+Repeated read-only verification produced identical typed results across two
+independent core runs and byte-identical JSON across two CLI runs. Strict JSON
+serialization succeeded, and the CLI JSON matched the public API result.
+
 ### Known Unknowns
 
 - The official release does not provide fixed train, validation, or test file

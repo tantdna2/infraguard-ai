@@ -119,19 +119,19 @@ Understand and validate MBDD2025 before any serious model training.
 
 ## Dataset Statistics
 
-* [ ] Count total images
-* [ ] Count total instances
-* [ ] Calculate image count per class
-* [ ] Calculate instance count per class
-* [ ] Calculate objects per image
-* [ ] Analyze bounding-box width
-* [ ] Analyze bounding-box height
-* [ ] Analyze normalized bounding-box area
-* [ ] Analyze bounding-box aspect ratio
-* [ ] Analyze object-center distributions
-* [ ] Analyze image resolutions
-* [ ] Analyze brightness distribution
-* [ ] Analyze image contrast
+* [x] Count total images
+* [x] Count total instances
+* [x] Calculate image count per class
+* [x] Calculate instance count per class
+* [x] Calculate objects per image
+* [x] Analyze bounding-box width
+* [x] Analyze bounding-box height
+* [x] Analyze normalized bounding-box area
+* [x] Analyze bounding-box aspect ratio
+* [x] Analyze object-center distributions
+* [x] Analyze image resolutions
+* [x] Analyze brightness distribution
+* [x] Analyze image contrast
 
 ## Data Quality Audit
 
