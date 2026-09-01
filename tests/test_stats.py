@@ -6,6 +6,7 @@ from dataclasses import FrozenInstanceError, asdict
 from pathlib import Path
 
 import pytest
+from infraguard.data.mbdd import YoloAnnotationRow
 from infraguard.data.stats import (
     BoundingBoxStatistics,
     ClassStatistics,
@@ -299,6 +300,48 @@ def test_unusable_rows_have_one_exclusion_root_cause_each(tmp_path: Path) -> Non
     assert result.counts.usable_annotation_count == 1
     assert result.objects_per_image == summarize_numeric([1])
     assert result.bounding_boxes.width == summarize_numeric([0.2])
+
+
+def test_positive_source_size_collapsing_in_xyxy_is_zero_area(tmp_path: Path) -> None:
+    """A positive subnormal width is excluded when reconstructed XYXY collapses."""
+    subnormal_width = float("5e-324")
+    row = YoloAnnotationRow(
+        class_id=0,
+        x_center=0.5,
+        y_center=0.5,
+        width=subnormal_width,
+        height=0.2,
+    )
+    box = row.to_bounding_box()
+    assert row.width > 0
+    assert row.height > 0
+    assert box.xmax <= box.xmin
+
+    dataset_root = _write_synthetic_dataset(
+        tmp_path,
+        {"collapsed": f"0 0.5 0.5 {subnormal_width!r} 0.2\n"},
+    )
+
+    result = compute_mbdd2025_annotation_statistics(
+        dataset_root,
+        class_names=_CLASS_NAMES,
+    )
+
+    assert result.quality.zero_area_annotation_count == 1
+    assert result.quality.excluded_annotation_count == 1
+    assert result.quality.usable_annotation_count == 0
+    assert result.quality.out_of_bounds_annotation_count == 0
+    assert result.counts.usable_annotation_count == 0
+    assert result.objects_per_image == summarize_numeric([0])
+    assert all(class_stats.instance_count == 0 for class_stats in result.classes)
+    assert all(class_stats.image_count == 0 for class_stats in result.classes)
+    empty_summary = summarize_numeric([])
+    assert result.bounding_boxes.width == empty_summary
+    assert result.bounding_boxes.height == empty_summary
+    assert result.bounding_boxes.area == empty_summary
+    assert result.bounding_boxes.aspect_ratio == empty_summary
+    assert result.bounding_boxes.center_x == empty_summary
+    assert result.bounding_boxes.center_y == empty_summary
 
 
 def test_materially_oob_annotation_remains_usable_and_unclamped(tmp_path: Path) -> None:

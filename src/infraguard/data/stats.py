@@ -358,6 +358,9 @@ def _annotation_exclusion_code(
         return ValidationCode.NON_POSITIVE_BOX_SIZE
     if row.width == 0 or row.height == 0:
         return ValidationCode.ZERO_AREA_BOX
+    box = row.to_bounding_box()
+    if box.xmax <= box.xmin or box.ymax <= box.ymin:
+        return ValidationCode.ZERO_AREA_BOX
     return None
 
 
