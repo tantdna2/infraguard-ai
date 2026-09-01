@@ -3,18 +3,58 @@
 import json
 import math
 from dataclasses import FrozenInstanceError, asdict
+from pathlib import Path
 
 import pytest
 from infraguard.data.stats import (
     BoundingBoxStatistics,
     ClassStatistics,
     DatasetCounts,
+    DatasetStatisticsError,
     ImageStatistics,
+    MBDD2025AnnotationStatistics,
     MBDD2025Statistics,
     NumericSummary,
     QualityAccounting,
+    compute_mbdd2025_annotation_statistics,
     summarize_numeric,
 )
+
+_CLASS_NAMES = {0: "crack", 1: "leakage", 2: "bulge"}
+
+
+def _write_synthetic_dataset(
+    tmp_path: Path,
+    labels: dict[str, str],
+) -> Path:
+    dataset_root = tmp_path / "MBDD2025"
+    images_directory = dataset_root / "JPEGImages"
+    labels_directory = dataset_root / "Labels"
+    images_directory.mkdir(parents=True)
+    labels_directory.mkdir()
+    for image_name, label_text in labels.items():
+        (images_directory / f"{image_name}.jpg").touch()
+        (labels_directory / f"{image_name}.txt").write_text(
+            label_text,
+            encoding="utf-8",
+        )
+    return dataset_root
+
+
+def _assert_single_value_summary(
+    summary: NumericSummary,
+    expected: float,
+) -> None:
+    assert summary.count == 1
+    for metric in (
+        summary.min,
+        summary.max,
+        summary.mean,
+        summary.median,
+        summary.p25,
+        summary.p75,
+    ):
+        assert metric == pytest.approx(expected)
 
 
 def test_empty_distribution_uses_none_for_unavailable_metrics() -> None:
@@ -110,7 +150,7 @@ def test_dataset_statistics_skeleton_is_immutable_and_json_compatible() -> None:
         counts=DatasetCounts(
             image_count=0,
             label_file_count=0,
-            annotation_count=0,
+            usable_annotation_count=0,
         ),
         classes=(
             ClassStatistics(
@@ -136,7 +176,14 @@ def test_dataset_statistics_skeleton_is_immutable_and_json_compatible() -> None:
             contrast=empty,
         ),
         quality=QualityAccounting(
+            total_annotation_row_count=0,
+            usable_annotation_count=0,
             excluded_annotation_count=0,
+            malformed_annotation_count=0,
+            invalid_class_annotation_count=0,
+            invalid_coordinate_annotation_count=0,
+            negative_size_annotation_count=0,
+            zero_area_annotation_count=0,
             out_of_bounds_annotation_count=0,
             empty_label_count=0,
         ),
@@ -145,3 +192,200 @@ def test_dataset_statistics_skeleton_is_immutable_and_json_compatible() -> None:
     json.dumps(asdict(statistics), allow_nan=False)
     with pytest.raises(FrozenInstanceError):
         statistics.schema_version = 2  # type: ignore[misc]
+
+
+def test_class_counts_keep_instances_images_and_zero_classes_distinct(
+    tmp_path: Path,
+) -> None:
+    """Class counts preserve source instances while counting each image once."""
+    dataset_root = _write_synthetic_dataset(
+        tmp_path,
+        {
+            "multiple": (
+                "0 0.5 0.5 0.2 0.2\n"
+                "0 0.5 0.5 0.2 0.2\n"
+                "0 0.5 0.5 0.2 0.2\n"
+                "1 0.4 0.4 0.1 0.1\n"
+            ),
+            "empty": "",
+        },
+    )
+
+    result = compute_mbdd2025_annotation_statistics(
+        dataset_root,
+        class_names=_CLASS_NAMES,
+    )
+
+    assert isinstance(result, MBDD2025AnnotationStatistics)
+    assert result.counts == DatasetCounts(
+        image_count=2,
+        label_file_count=2,
+        usable_annotation_count=4,
+    )
+    assert result.classes == (
+        ClassStatistics(0, "crack", image_count=1, instance_count=3),
+        ClassStatistics(1, "leakage", image_count=1, instance_count=1),
+        ClassStatistics(2, "bulge", image_count=0, instance_count=0),
+    )
+    assert result.objects_per_image == NumericSummary(
+        count=2,
+        min=0.0,
+        max=4.0,
+        mean=2.0,
+        median=2.0,
+        p25=1.0,
+        p75=3.0,
+    )
+    assert result.quality.empty_label_count == 1
+    assert result.quality.total_annotation_row_count == 4
+    assert result.quality.usable_annotation_count == 4
+    assert result.quality.excluded_annotation_count == 0
+
+
+def test_bounding_box_statistics_use_original_yolo_components(tmp_path: Path) -> None:
+    """Box metrics are calculated directly from known normalized YOLO values."""
+    dataset_root = _write_synthetic_dataset(
+        tmp_path,
+        {"box": "0 0.3 0.6 0.4 0.2\n"},
+    )
+
+    result = compute_mbdd2025_annotation_statistics(
+        dataset_root,
+        class_names=_CLASS_NAMES,
+    )
+
+    _assert_single_value_summary(result.bounding_boxes.width, 0.4)
+    _assert_single_value_summary(result.bounding_boxes.height, 0.2)
+    _assert_single_value_summary(result.bounding_boxes.area, 0.08)
+    _assert_single_value_summary(result.bounding_boxes.aspect_ratio, 2.0)
+    _assert_single_value_summary(result.bounding_boxes.center_x, 0.3)
+    _assert_single_value_summary(result.bounding_boxes.center_y, 0.6)
+
+
+def test_unusable_rows_have_one_exclusion_root_cause_each(tmp_path: Path) -> None:
+    """Malformed and semantically unusable rows are excluded and accounted once."""
+    dataset_root = _write_synthetic_dataset(
+        tmp_path,
+        {
+            "quality": (
+                "0 0.5 0.5 0.2\n"
+                "99 0.5 0.5 0.2 0.2\n"
+                "0 nan 0.5 0.2 0.2\n"
+                "0 1.1 0.5 0.2 0.2\n"
+                "0 0.5 0.5 -0.2 0.2\n"
+                "0 0.5 0.5 0 0.2\n"
+                "0 0.5 0.5 0.2 0.2\n"
+            )
+        },
+    )
+
+    result = compute_mbdd2025_annotation_statistics(
+        dataset_root,
+        class_names=_CLASS_NAMES,
+    )
+
+    assert result.quality == QualityAccounting(
+        total_annotation_row_count=7,
+        usable_annotation_count=1,
+        excluded_annotation_count=6,
+        malformed_annotation_count=1,
+        invalid_class_annotation_count=1,
+        invalid_coordinate_annotation_count=2,
+        negative_size_annotation_count=1,
+        zero_area_annotation_count=1,
+        out_of_bounds_annotation_count=0,
+        empty_label_count=0,
+    )
+    assert result.counts.usable_annotation_count == 1
+    assert result.objects_per_image == summarize_numeric([1])
+    assert result.bounding_boxes.width == summarize_numeric([0.2])
+
+
+def test_materially_oob_annotation_remains_usable_and_unclamped(tmp_path: Path) -> None:
+    """A source-valid OOB row contributes its unmodified YOLO values."""
+    dataset_root = _write_synthetic_dataset(
+        tmp_path,
+        {"oob": "0 0.1 0.5 0.4 0.2\n"},
+    )
+
+    result = compute_mbdd2025_annotation_statistics(
+        dataset_root,
+        class_names=_CLASS_NAMES,
+    )
+
+    assert result.counts.usable_annotation_count == 1
+    assert result.quality.usable_annotation_count == 1
+    assert result.quality.excluded_annotation_count == 0
+    assert result.quality.out_of_bounds_annotation_count == 1
+    _assert_single_value_summary(result.bounding_boxes.width, 0.4)
+    _assert_single_value_summary(result.bounding_boxes.height, 0.2)
+    _assert_single_value_summary(result.bounding_boxes.area, 0.08)
+    _assert_single_value_summary(result.bounding_boxes.aspect_ratio, 2.0)
+    _assert_single_value_summary(result.bounding_boxes.center_x, 0.1)
+    _assert_single_value_summary(result.bounding_boxes.center_y, 0.5)
+
+
+def test_exact_duplicate_source_rows_are_not_deduplicated(tmp_path: Path) -> None:
+    """Identical source rows each remain an annotation instance."""
+    duplicate_row = "0 0.5 0.5 0.2 0.2\n"
+    dataset_root = _write_synthetic_dataset(
+        tmp_path,
+        {"duplicates": duplicate_row * 2},
+    )
+
+    result = compute_mbdd2025_annotation_statistics(
+        dataset_root,
+        class_names=_CLASS_NAMES,
+    )
+
+    assert result.counts.usable_annotation_count == 2
+    assert result.classes[0].image_count == 1
+    assert result.classes[0].instance_count == 2
+    assert result.bounding_boxes.width.count == 2
+
+
+def test_discovery_and_results_are_deterministic(tmp_path: Path) -> None:
+    """Filesystem creation order does not affect discovery or result ordering."""
+    dataset_root = _write_synthetic_dataset(
+        tmp_path,
+        {
+            "z-last": "1 0.5 0.5 0.2 0.2\n",
+            "a-first": "0 0.5 0.5 0.1 0.1\n",
+            "m-middle": "",
+        },
+    )
+    (dataset_root / "JPEGImages" / "ignored.png").touch()
+    (dataset_root / "Labels" / "ignored.TXT").touch()
+
+    first = compute_mbdd2025_annotation_statistics(
+        dataset_root,
+        class_names={2: "bulge", 0: "crack", 1: "leakage"},
+    )
+    second = compute_mbdd2025_annotation_statistics(
+        dataset_root,
+        class_names={1: "leakage", 2: "bulge", 0: "crack"},
+    )
+
+    assert first == second
+    assert first.counts.image_count == 3
+    assert first.counts.label_file_count == 3
+    assert tuple(item.class_id for item in first.classes) == (0, 1, 2)
+
+
+@pytest.mark.parametrize("anomaly", ["missing", "orphan"])
+def test_structural_label_anomaly_is_not_treated_as_empty(
+    tmp_path: Path,
+    anomaly: str,
+) -> None:
+    """Missing and orphan labels stop statistics instead of inventing zeros."""
+    dataset_root = _write_synthetic_dataset(tmp_path, {"paired": ""})
+    if anomaly == "missing":
+        (dataset_root / "JPEGImages" / "missing.jpg").touch()
+    else:
+        (dataset_root / "Labels" / "orphan.txt").touch()
+
+    with pytest.raises(DatasetStatisticsError, match=anomaly):
+        compute_mbdd2025_annotation_statistics(
+            dataset_root,
+            class_names=_CLASS_NAMES,
+        )

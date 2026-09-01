@@ -1,8 +1,21 @@
 """Typed schemas and numeric utilities for dataset statistics."""
 
 import math
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from pathlib import Path
+
+from infraguard.data.mbdd import (
+    AnnotationParseError,
+    DatasetLayoutError,
+    YoloAnnotationRow,
+    parse_yolo_line,
+)
+from infraguard.data.validator import OOB_TOLERANCE, ValidationCode
+
+_IMAGE_DIRECTORY_NAME = "JPEGImages"
+_LABEL_DIRECTORY_NAME = "Labels"
+_IMAGE_SUFFIXES = frozenset({".jpg"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,11 +37,11 @@ class NumericSummary:
 
 @dataclass(frozen=True, slots=True)
 class DatasetCounts:
-    """Headline file, image, and annotation counts."""
+    """Headline file, image, and usable-annotation counts."""
 
     image_count: int
     label_file_count: int
-    annotation_count: int
+    usable_annotation_count: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,11 +78,33 @@ class ImageStatistics:
 
 @dataclass(frozen=True, slots=True)
 class QualityAccounting:
-    """Counts that make exclusions and source-quality findings explicit."""
+    """Counts that make exclusions and source-quality findings explicit.
 
+    Total rows counts non-blank YOLO rows. Each excluded row contributes to
+    exactly one root-cause field; OOB is tracked separately as a usable subset.
+    """
+
+    total_annotation_row_count: int
+    usable_annotation_count: int
     excluded_annotation_count: int
+    malformed_annotation_count: int
+    invalid_class_annotation_count: int
+    invalid_coordinate_annotation_count: int
+    negative_size_annotation_count: int
+    zero_area_annotation_count: int
     out_of_bounds_annotation_count: int
     empty_label_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class MBDD2025AnnotationStatistics:
+    """Annotation-derived MBDD2025 statistics produced by Task 5.2."""
+
+    counts: DatasetCounts
+    classes: tuple[ClassStatistics, ...]
+    objects_per_image: NumericSummary
+    bounding_boxes: BoundingBoxStatistics
+    quality: QualityAccounting
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +122,253 @@ class MBDD2025Statistics:
     bounding_boxes: BoundingBoxStatistics
     images: ImageStatistics
     quality: QualityAccounting
+
+
+class DatasetStatisticsError(ValueError):
+    """Raised when structural anomalies prevent meaningful statistics."""
+
+
+def compute_mbdd2025_annotation_statistics(
+    dataset_root: Path,
+    *,
+    class_names: Mapping[int, str],
+) -> MBDD2025AnnotationStatistics:
+    """Compute deterministic file, class, object, box, and quality statistics.
+
+    A usable annotation parses as YOLO, belongs to ``class_names``, has finite
+    coordinates, has centers within ``[0, 1]``, has sizes no greater than one,
+    and has strictly positive width and height. Materially out-of-bounds XYXY
+    boxes remain usable and retain their original YOLO values in all aggregates.
+
+    Missing or orphan labels raise ``DatasetStatisticsError`` because their
+    object count is unknown; they are never interpreted as empty labels.
+    """
+    image_paths, label_paths, image_label_pairs = _discover_dataset(dataset_root)
+    ordered_classes = tuple(sorted(class_names.items()))
+    valid_class_ids = frozenset(class_names)
+    class_image_counts = {class_id: 0 for class_id, _ in ordered_classes}
+    class_instance_counts = {class_id: 0 for class_id, _ in ordered_classes}
+
+    objects_per_image: list[int] = []
+    widths: list[float] = []
+    heights: list[float] = []
+    areas: list[float] = []
+    aspect_ratios: list[float] = []
+    centers_x: list[float] = []
+    centers_y: list[float] = []
+
+    total_annotation_row_count = 0
+    usable_annotation_count = 0
+    malformed_annotation_count = 0
+    invalid_class_annotation_count = 0
+    invalid_coordinate_annotation_count = 0
+    negative_size_annotation_count = 0
+    zero_area_annotation_count = 0
+    out_of_bounds_annotation_count = 0
+    empty_label_count = 0
+
+    for _, label_path in image_label_pairs:
+        try:
+            lines = label_path.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeError) as error:
+            raise DatasetStatisticsError(
+                f"Could not read YOLO label file: {label_path}"
+            ) from error
+
+        annotation_lines = tuple(
+            (line_number, line)
+            for line_number, line in enumerate(lines, start=1)
+            if line.strip()
+        )
+        if not annotation_lines:
+            empty_label_count += 1
+
+        image_usable_count = 0
+        image_class_ids: set[int] = set()
+        for line_number, line in annotation_lines:
+            total_annotation_row_count += 1
+            try:
+                row = parse_yolo_line(
+                    line,
+                    label_path=label_path,
+                    line_number=line_number,
+                )
+            except AnnotationParseError:
+                malformed_annotation_count += 1
+                continue
+
+            exclusion_code = _annotation_exclusion_code(row, valid_class_ids)
+            if exclusion_code is not None:
+                if exclusion_code is ValidationCode.INVALID_CLASS_ID:
+                    invalid_class_annotation_count += 1
+                elif exclusion_code is ValidationCode.INVALID_COORDINATE:
+                    invalid_coordinate_annotation_count += 1
+                elif exclusion_code is ValidationCode.NON_POSITIVE_BOX_SIZE:
+                    negative_size_annotation_count += 1
+                elif exclusion_code is ValidationCode.ZERO_AREA_BOX:
+                    zero_area_annotation_count += 1
+                continue
+
+            usable_annotation_count += 1
+            image_usable_count += 1
+            image_class_ids.add(row.class_id)
+            class_instance_counts[row.class_id] += 1
+            widths.append(row.width)
+            heights.append(row.height)
+            areas.append(row.width * row.height)
+            aspect_ratios.append(row.width / row.height)
+            centers_x.append(row.x_center)
+            centers_y.append(row.y_center)
+            if _is_materially_out_of_bounds(row):
+                out_of_bounds_annotation_count += 1
+
+        objects_per_image.append(image_usable_count)
+        for class_id in image_class_ids:
+            class_image_counts[class_id] += 1
+
+    classes = tuple(
+        ClassStatistics(
+            class_id=class_id,
+            class_name=class_name,
+            image_count=class_image_counts[class_id],
+            instance_count=class_instance_counts[class_id],
+        )
+        for class_id, class_name in ordered_classes
+    )
+    excluded_annotation_count = (
+        malformed_annotation_count
+        + invalid_class_annotation_count
+        + invalid_coordinate_annotation_count
+        + negative_size_annotation_count
+        + zero_area_annotation_count
+    )
+    quality = QualityAccounting(
+        total_annotation_row_count=total_annotation_row_count,
+        usable_annotation_count=usable_annotation_count,
+        excluded_annotation_count=excluded_annotation_count,
+        malformed_annotation_count=malformed_annotation_count,
+        invalid_class_annotation_count=invalid_class_annotation_count,
+        invalid_coordinate_annotation_count=invalid_coordinate_annotation_count,
+        negative_size_annotation_count=negative_size_annotation_count,
+        zero_area_annotation_count=zero_area_annotation_count,
+        out_of_bounds_annotation_count=out_of_bounds_annotation_count,
+        empty_label_count=empty_label_count,
+    )
+    return MBDD2025AnnotationStatistics(
+        counts=DatasetCounts(
+            image_count=len(image_paths),
+            label_file_count=len(label_paths),
+            usable_annotation_count=usable_annotation_count,
+        ),
+        classes=classes,
+        objects_per_image=summarize_numeric(objects_per_image),
+        bounding_boxes=BoundingBoxStatistics(
+            width=summarize_numeric(widths),
+            height=summarize_numeric(heights),
+            area=summarize_numeric(areas),
+            aspect_ratio=summarize_numeric(aspect_ratios),
+            center_x=summarize_numeric(centers_x),
+            center_y=summarize_numeric(centers_y),
+        ),
+        quality=quality,
+    )
+
+
+def _discover_dataset(
+    dataset_root: Path,
+) -> tuple[tuple[Path, ...], tuple[Path, ...], tuple[tuple[Path, Path], ...]]:
+    images_directory = dataset_root / _IMAGE_DIRECTORY_NAME
+    labels_directory = dataset_root / _LABEL_DIRECTORY_NAME
+    if not images_directory.is_dir():
+        raise DatasetLayoutError(
+            "MBDD2025 image directory does not exist or is not a directory: "
+            f"{images_directory}"
+        )
+    if not labels_directory.is_dir():
+        raise DatasetLayoutError(
+            "MBDD2025 label directory does not exist or is not a directory: "
+            f"{labels_directory}"
+        )
+
+    image_paths = tuple(
+        sorted(
+            (
+                path
+                for path in images_directory.iterdir()
+                if path.is_file() and path.suffix.casefold() in _IMAGE_SUFFIXES
+            ),
+            key=lambda path: (path.name.casefold(), path.name),
+        )
+    )
+    label_paths = tuple(
+        sorted(
+            (
+                path
+                for path in labels_directory.iterdir()
+                if path.is_file() and path.suffix == ".txt"
+            ),
+            key=lambda path: (path.name.casefold(), path.name),
+        )
+    )
+    label_paths_by_name = {path.name: path for path in label_paths}
+    image_stems = {path.stem for path in image_paths}
+    missing_label_names = tuple(
+        f"{image_path.stem}.txt"
+        for image_path in image_paths
+        if f"{image_path.stem}.txt" not in label_paths_by_name
+    )
+    orphan_label_names = tuple(
+        label_path.name
+        for label_path in label_paths
+        if label_path.stem not in image_stems
+    )
+    if missing_label_names or orphan_label_names:
+        details: list[str] = []
+        if missing_label_names:
+            details.append(f"missing labels: {', '.join(missing_label_names)}")
+        if orphan_label_names:
+            details.append(f"orphan labels: {', '.join(orphan_label_names)}")
+        raise DatasetStatisticsError("; ".join(details))
+
+    image_label_pairs = tuple(
+        (image_path, label_paths_by_name[f"{image_path.stem}.txt"])
+        for image_path in image_paths
+    )
+    return image_paths, label_paths, image_label_pairs
+
+
+def _annotation_exclusion_code(
+    row: YoloAnnotationRow,
+    valid_class_ids: frozenset[int],
+) -> ValidationCode | None:
+    if row.class_id not in valid_class_ids:
+        return ValidationCode.INVALID_CLASS_ID
+
+    coordinates = (row.x_center, row.y_center, row.width, row.height)
+    if not all(math.isfinite(value) for value in coordinates):
+        return ValidationCode.INVALID_COORDINATE
+    if (
+        not 0 <= row.x_center <= 1
+        or not 0 <= row.y_center <= 1
+        or row.width > 1
+        or row.height > 1
+    ):
+        return ValidationCode.INVALID_COORDINATE
+    if row.width < 0 or row.height < 0:
+        return ValidationCode.NON_POSITIVE_BOX_SIZE
+    if row.width == 0 or row.height == 0:
+        return ValidationCode.ZERO_AREA_BOX
+    return None
+
+
+def _is_materially_out_of_bounds(row: YoloAnnotationRow) -> bool:
+    box = row.to_bounding_box()
+    return (
+        box.xmin < -OOB_TOLERANCE
+        or box.ymin < -OOB_TOLERANCE
+        or box.xmax > 1.0 + OOB_TOLERANCE
+        or box.ymax > 1.0 + OOB_TOLERANCE
+    )
 
 
 def summarize_numeric(values: Iterable[float]) -> NumericSummary:
