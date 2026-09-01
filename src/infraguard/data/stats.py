@@ -1,5 +1,6 @@
-"""Typed schemas and numeric utilities for dataset statistics."""
+"""Typed schemas, calculations, and serialization for dataset statistics."""
 
+import json
 import math
 from collections import Counter
 from collections.abc import Iterable, Mapping
@@ -147,6 +148,92 @@ class MBDD2025Statistics:
 
 class DatasetStatisticsError(ValueError):
     """Raised when structural anomalies prevent meaningful statistics."""
+
+
+def statistics_to_dict(statistics: MBDD2025Statistics) -> dict[str, object]:
+    """Convert statistics to a deterministic JSON-compatible structure."""
+    counts = statistics.counts
+    bounding_boxes = statistics.bounding_boxes
+    images = statistics.images
+    quality = statistics.quality
+    return {
+        "schema_version": statistics.schema_version,
+        "counts": {
+            "image_count": counts.image_count,
+            "label_file_count": counts.label_file_count,
+            "usable_annotation_count": counts.usable_annotation_count,
+        },
+        "classes": [
+            {
+                "class_id": class_statistics.class_id,
+                "class_name": class_statistics.class_name,
+                "image_count": class_statistics.image_count,
+                "instance_count": class_statistics.instance_count,
+            }
+            for class_statistics in statistics.classes
+        ],
+        "objects_per_image": _numeric_summary_to_dict(statistics.objects_per_image),
+        "bounding_boxes": {
+            "width": _numeric_summary_to_dict(bounding_boxes.width),
+            "height": _numeric_summary_to_dict(bounding_boxes.height),
+            "area": _numeric_summary_to_dict(bounding_boxes.area),
+            "aspect_ratio": _numeric_summary_to_dict(bounding_boxes.aspect_ratio),
+            "center_x": _numeric_summary_to_dict(bounding_boxes.center_x),
+            "center_y": _numeric_summary_to_dict(bounding_boxes.center_y),
+        },
+        "images": {
+            "width": _numeric_summary_to_dict(images.width),
+            "height": _numeric_summary_to_dict(images.height),
+            "brightness": _numeric_summary_to_dict(images.brightness),
+            "contrast": _numeric_summary_to_dict(images.contrast),
+        },
+        "resolution_counts": [
+            {
+                "width": resolution.width,
+                "height": resolution.height,
+                "image_count": resolution.image_count,
+            }
+            for resolution in statistics.resolution_counts
+        ],
+        "quality": {
+            "total_annotation_row_count": quality.total_annotation_row_count,
+            "usable_annotation_count": quality.usable_annotation_count,
+            "excluded_annotation_count": quality.excluded_annotation_count,
+            "malformed_annotation_count": quality.malformed_annotation_count,
+            "invalid_class_annotation_count": quality.invalid_class_annotation_count,
+            "invalid_coordinate_annotation_count": (
+                quality.invalid_coordinate_annotation_count
+            ),
+            "negative_size_annotation_count": quality.negative_size_annotation_count,
+            "zero_area_annotation_count": quality.zero_area_annotation_count,
+            "out_of_bounds_annotation_count": (quality.out_of_bounds_annotation_count),
+            "empty_label_count": quality.empty_label_count,
+        },
+    }
+
+
+def statistics_to_json(statistics: MBDD2025Statistics) -> str:
+    """Serialize statistics as deterministic strict JSON with a final newline."""
+    serialized = json.dumps(
+        statistics_to_dict(statistics),
+        allow_nan=False,
+        ensure_ascii=False,
+        indent=2,
+        sort_keys=True,
+    )
+    return f"{serialized}\n"
+
+
+def _numeric_summary_to_dict(summary: NumericSummary) -> dict[str, object]:
+    return {
+        "count": summary.count,
+        "min": summary.min,
+        "max": summary.max,
+        "mean": summary.mean,
+        "median": summary.median,
+        "p25": summary.p25,
+        "p75": summary.p75,
+    }
 
 
 def compute_mbdd2025_statistics(
