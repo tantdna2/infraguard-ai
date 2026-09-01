@@ -92,8 +92,8 @@ directories or file lists.
 - InfraGuard AI currently uses YOLO TXT as the primary MBDD2025 loader
   representation.
 - PASCAL VOC XML remains available as an independent annotation representation
-  and is intentionally deferred for cross-validation in a later
-  dataset-validation Issue.
+  for future systematic cross-validation. Day 4 used it only for limited,
+  targeted inspection of selected findings.
 
 ### Class Taxonomy
 
@@ -107,6 +107,30 @@ official MBDD2025 v1.0 release.
 | 2        | abscission |
 | 3        | corrosion  |
 | 4        | bulge      |
+
+### Day 4 Dataset Validation
+
+The Day 4 validator implements YOLO syntax and semantic validation, corrupt and
+unreadable image checks, image-label matching, and deterministic issue ordering.
+It can emit a deterministic, machine-readable JSON report with a schema version
+and portable dataset-relative paths.
+
+Reconstructed XYXY coordinates use an OOB tolerance of `1e-9`. This tolerance
+only suppresses floating-point reconstruction noise at normalized image
+boundaries. It is not clipping, does not alter annotation or `BoundingBox`
+values, and does not permit material out-of-bounds annotations.
+
+The final read-only validation of the local MBDD2025 v1.0 release produced:
+
+| Validation code     | Severity | Count |
+| ------------------- | -------- | ----: |
+| `OUT_OF_BOUNDS_BOX` | ERROR    |   116 |
+| `EMPTY_LABEL`       | INFO     |     8 |
+
+Limited, targeted inspection of corresponding PASCAL VOC annotations supports
+the conclusion that the 116 material OOB results are source-annotation quality
+findings. This is targeted evidence only; a full YOLO-versus-VOC
+cross-validation has not been completed.
 
 ### Known Unknowns
 

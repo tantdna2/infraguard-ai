@@ -8,8 +8,10 @@ from infraguard.data import mbdd
 from infraguard.data.mbdd import (
     AnnotationParseError,
     DatasetLayoutError,
+    YoloAnnotationRow,
     load_mbdd2025,
     parse_yolo_label,
+    parse_yolo_line,
 )
 from infraguard.data.schemas import BoundingBox, ImageRecord
 
@@ -92,6 +94,23 @@ def test_parse_yolo_label_converts_single_box_to_normalized_xyxy(
     assert boxes[0].ymin == pytest.approx(0.35)
     assert boxes[0].xmax == pytest.approx(0.6)
     assert boxes[0].ymax == pytest.approx(0.45)
+
+
+def test_parse_yolo_line_exposes_normalized_source_values() -> None:
+    """The public row parser preserves YOLO values for validator reuse."""
+    row = parse_yolo_line(
+        "2 0.5 0.4 0.2 0.1",
+        label_path=Path("Labels/example.txt"),
+        line_number=3,
+    )
+
+    assert row == YoloAnnotationRow(
+        class_id=2,
+        x_center=0.5,
+        y_center=0.4,
+        width=0.2,
+        height=0.1,
+    )
 
 
 def test_parse_yolo_label_returns_multiple_boxes(tmp_path: Path) -> None:
